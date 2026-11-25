@@ -9,12 +9,18 @@
   integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
   integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"
+  integrity="sha384-MtIdllebpZyms2pw9K3YJl8BEqrKNQCdSFAySjeglab6z2PkeFdF4Lb9cDsnxQuG" crossorigin=""></script>
 <style>
 :root{
   --bg:#0F172A; --card:#192134; --card2:#222C42; --fg:#F8FAFC; --muted:#94A3B8;
   --border:rgba(255,255,255,.09); --primary:#EA580C; --primary-2:#F97316; --on-primary:#0B0F19;
   --accent:#10B981; --danger:#F87171; --radius:16px;
   --font:system-ui,-apple-system,"Segoe UI",Roboto,"Inter",sans-serif;
+  /* Ressorts (échantillonnés en linear()) : panneau sans rebond visible, menu avec un léger rebond */
+  --spring-sheet:475ms linear(0,0.033,0.113,0.217,0.328,0.438,0.539,0.63,0.708,0.773,0.827,0.871,0.906,0.933,0.953,0.969,0.98,0.988,0.994,0.998,1,1.002,1.003,1.003,1.003,1.003,1.003,1.002,1);
+  --spring-pop:445ms linear(0,0.051,0.171,0.322,0.479,0.625,0.75,0.85,0.926,0.98,1.015,1.035,1.044,1.046,1.042,1.036,1.029,1.022,1.016,1.01,1.006,1.003,1,0.999,0.998,0.998,0.998,1);
+  --peek:76px;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:16px;overflow:hidden}
@@ -27,13 +33,42 @@ button{font:inherit;color:inherit}
 .fab svg{width:22px;height:22px;stroke:var(--fg);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .fab.busy svg{animation:spin 1.2s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.fab[aria-expanded=true]{border-color:var(--primary);box-shadow:0 0 0 3px rgba(234,88,12,.35),0 4px 14px rgba(0,0,0,.35)}
+.fab-group{display:flex;flex-direction:column;border-radius:14px;overflow:hidden;border:1px solid var(--border);box-shadow:0 4px 14px rgba(0,0,0,.35);margin-top:6px}
+.fab-group .fab{border:0;border-radius:0;box-shadow:none}
+.fab-group .fab+.fab{border-top:1px solid var(--border)}
+#compass .needle{transition:transform .12s linear;transform-origin:12px 12px}
+#compass .n{fill:var(--primary);stroke:none}
+#compass .s{fill:#64748B;stroke:none}
+
+/* Menu flottant des fonds de carte */
+.layer-menu{position:absolute;right:72px;top:calc(70px + env(safe-area-inset-top));z-index:550;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.layer-menu.open{pointer-events:auto}
+.layer-opt{display:flex;align-items:center;gap:10px;min-height:52px;padding:6px 14px 6px 6px;border-radius:14px;border:1px solid var(--border);
+  background:rgba(15,23,42,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 6px 18px rgba(0,0,0,.35);cursor:pointer;
+  font-weight:600;font-size:15px;text-align:left;
+  opacity:0;transform:translateX(14px) scale(.94);transform-origin:right center;
+  transition:opacity .12s linear,transform .15s ease-in}
+.layer-menu.open .layer-opt{opacity:1;transform:none;transition:opacity .18s linear calc(var(--i)*40ms),transform var(--spring-pop) calc(var(--i)*40ms)}
+.layer-opt .thumb{width:40px;height:40px;border-radius:10px;background:#334155 center/cover no-repeat;flex:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
+.layer-opt[aria-checked=true]{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary),0 6px 18px rgba(0,0,0,.35)}
+.layer-opt[aria-checked=true] .thumb{box-shadow:0 0 0 2px var(--primary)}
+.layer-opt small{display:block;font-weight:500;font-size:12px;color:var(--muted)}
+.layer-sep{height:1px;background:var(--border);margin:2px 8px}
 
 .sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;background:var(--bg);border-radius:22px 22px 0 0;
-  box-shadow:0 -10px 30px rgba(0,0,0,.4);padding:6px 16px calc(16px + env(safe-area-inset-bottom));max-height:78vh;overflow-y:auto;
-  transition:transform .28s cubic-bezier(.2,.8,.2,1)}
-.sheet.collapsed{transform:translateY(calc(100% - 64px))}
-.handle{display:flex;justify-content:center;align-items:center;height:28px;cursor:pointer}
+  box-shadow:0 -10px 30px rgba(0,0,0,.4);padding:0 16px calc(16px + env(safe-area-inset-bottom));max-height:78vh;overflow-y:auto;
+  transition:transform var(--spring-sheet);will-change:transform}
+.sheet.collapsed{transform:translateY(calc(100% - var(--peek) - env(safe-area-inset-bottom)));overflow:hidden}
+.sheet.dragging{transition:none}
+.grab{position:sticky;top:0;z-index:2;background:var(--bg);padding-top:6px;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.handle{display:flex;justify-content:center;align-items:center;height:22px}
 .handle span{width:44px;height:5px;border-radius:3px;background:#475569}
+.peek{display:flex;align-items:center;justify-content:space-between;gap:10px;height:0;opacity:0;overflow:hidden;transition:height .2s ease,opacity .15s linear}
+.sheet.collapsed .peek{height:44px;opacity:1}
+.peek .ptitle{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.peek .psub{color:var(--muted);font-size:13px;white-space:nowrap}
+.peek svg{width:22px;height:22px;stroke:var(--muted);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .hint{color:var(--muted);font-size:13px;margin:0 0 10px;min-height:18px}
 .hint.err{color:var(--danger)}
 .row{margin:14px 0}
@@ -97,13 +132,27 @@ input[type=range]{flex:1;width:100%;accent-color:var(--primary);height:32px}
   <button class="fab" id="btnLocate" aria-label="Ma position">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
   </button>
-  <button class="fab" id="btnLayer" aria-label="Changer de fond de carte">
+  <button class="fab" id="btnLayer" aria-label="Fonds de carte" aria-haspopup="true" aria-expanded="false" aria-controls="layerMenu">
     <svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 16 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
   </button>
+  <button class="fab" id="compass" aria-label="Remettre le nord en haut">
+    <svg viewBox="0 0 24 24"><g class="needle"><path class="n" d="M12 3l3.2 9h-6.4z"/><path class="s" d="M12 21l-3.2-9h6.4z"/></g></svg>
+  </button>
+  <div class="fab-group">
+    <button class="fab" id="zoomIn" aria-label="Zoomer"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="fab" id="zoomOut" aria-label="Dézoomer"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+  </div>
 </div>
+<div class="layer-menu" id="layerMenu" role="menu" aria-label="Fonds de carte" aria-hidden="true"></div>
 
 <section class="sheet" id="sheet" aria-label="Réglages du parcours">
-  <div class="handle" id="handle" role="button" tabindex="0" aria-label="Réduire ou agrandir le panneau"><span></span></div>
+  <div class="grab" id="grab">
+    <div class="handle" id="handle" role="button" tabindex="0" aria-label="Réduire ou agrandir le panneau" aria-expanded="true"><span></span></div>
+    <div class="peek" id="peek" aria-hidden="true">
+      <div style="min-width:0"><div class="ptitle" id="peekTitle"></div><div class="psub" id="peekSub"></div></div>
+      <svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg>
+    </div>
+  </div>
 
   <!-- Réglages -->
   <div id="setup">
@@ -185,16 +234,67 @@ const store={get(k,d){try{const v=localStorage.getItem('boucle.'+k);return v==nu
 const cfg={dist:store.get('dist',10),useD:store.get('useD',false),dplus:store.get('dplus',300),profile:store.get('profile','hiking-mountain')};
 
 // ---------- Carte ----------
-const layers=[
-  L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc',attribution:'© OpenStreetMap, SRTM | © OpenTopoMap (CC-BY-SA)'}),
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}),
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'© Esri, Maxar'})
+const reduceMotion=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+const BASES=[
+  {name:'Topo',sub:'Courbes de niveau',url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',thumb:'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
+   o:{maxZoom:17,subdomains:'abc',attribution:'© OpenStreetMap, SRTM | © OpenTopoMap (CC-BY-SA)'}},
+  {name:'Plan',sub:'OpenStreetMap',url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',thumb:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+   o:{maxZoom:19,attribution:'© OpenStreetMap'}},
+  {name:'Satellite',sub:'Photo aérienne',url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+   thumb:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',o:{maxZoom:19,attribution:'© Esri, Maxar'}}
 ];
-let layerIdx=store.get('layer',0)%layers.length;
-const map=L.map('map',{zoomControl:false,attributionControl:false}).setView([46.6,2.4],6);
+const OVERLAY={name:'Sentiers balisés',sub:'GR, PR, chemins de rando',url:'https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png',
+  o:{maxZoom:18,opacity:.85,attribution:'© waymarkedtrails.org'}};
+const layers=BASES.map(b=>L.tileLayer(b.url,b.o));
+const trails=L.tileLayer(OVERLAY.url,OVERLAY.o);
+let layerIdx=store.get('layer',0)%layers.length, trailsOn=store.get('trails',false);
+const map=L.map('map',{zoomControl:false,attributionControl:false,rotate:true,touchRotate:true,shiftKeyRotate:true,rotateControl:false,bearing:0})
+  .setView([46.6,2.4],6);
 L.control.attribution({position:'topleft',prefix:'Leaflet'}).addTo(map);
-layers[layerIdx].addTo(map);
-$('btnLayer').onclick=()=>{map.removeLayer(layers[layerIdx]);layerIdx=(layerIdx+1)%layers.length;layers[layerIdx].addTo(map);store.set('layer',layerIdx);};
+layers[layerIdx].addTo(map); if(trailsOn) trails.addTo(map);
+if(location.hostname==='127.0.0.1') window.__map=map;   // tests locaux uniquement
+
+// Menu flottant : une vignette par fond, prise sur la zone affichée
+const menu=$('layerMenu'), btnLayer=$('btnLayer');
+function tileFor(tpl){
+  const z=Math.min(13,Math.max(5,Math.round(map.getZoom())-1)), c=map.getCenter(), n=2**z;
+  const x=Math.floor((c.lng+180)/360*n), lr=c.lat*RAD;
+  const y=Math.floor((1-Math.log(Math.tan(lr)+1/Math.cos(lr))/Math.PI)/2*n);
+  return tpl.replace('{z}',z).replace('{x}',x).replace('{y}',y);
+}
+function buildMenu(){
+  menu.innerHTML=''; let i=0;
+  const add=(html,checked,role,fn)=>{
+    const b=document.createElement('button'); b.className='layer-opt'; b.setAttribute('role',role);
+    b.setAttribute('aria-checked',checked); b.style.setProperty('--i',i++); b.innerHTML=html; b.onclick=fn; menu.appendChild(b); return b;
+  };
+  BASES.forEach((b,k)=>add('<span class="thumb" style="background-image:url(\''+tileFor(b.thumb)+'\')"></span><span>'+b.name+'<small>'+b.sub+'</small></span>',
+    k===layerIdx,'menuitemradio',()=>{ if(k!==layerIdx){ map.removeLayer(layers[layerIdx]); layerIdx=k; layers[k].addTo(map); layers[k].bringToBack(); store.set('layer',k);} closeMenu(); }));
+  const sep=document.createElement('div'); sep.className='layer-sep'; menu.appendChild(sep);
+  add('<span class="thumb" style="background-image:url(\''+tileFor(OVERLAY.url)+'\'),url(\''+tileFor(BASES[1].thumb)+'\')"></span><span>'+OVERLAY.name+'<small>'+OVERLAY.sub+'</small></span>',
+    trailsOn,'menuitemcheckbox',e=>{ trailsOn=!trailsOn; trailsOn?trails.addTo(map):map.removeLayer(trails); store.set('trails',trailsOn); e.currentTarget.setAttribute('aria-checked',trailsOn); });
+}
+function openMenu(){ buildMenu(); void menu.offsetWidth; menu.classList.add('open'); menu.setAttribute('aria-hidden','false'); btnLayer.setAttribute('aria-expanded','true');
+  const first=menu.querySelector('[aria-checked=true]'); if(first) first.focus({preventScroll:true}); }
+function closeMenu(){ menuClosedAt=performance.now(); menu.classList.remove('open'); menu.setAttribute('aria-hidden','true'); btnLayer.setAttribute('aria-expanded','false'); }
+const menuOpen=()=>menu.classList.contains('open');
+btnLayer.onclick=e=>{ e.stopPropagation(); menuOpen()?closeMenu():openMenu(); };
+document.addEventListener('pointerdown',e=>{ if(menuOpen()&&!menu.contains(e.target)&&!btnLayer.contains(e.target)) closeMenu(); },true);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&menuOpen()){ closeMenu(); btnLayer.focus(); } });
+
+// Zoom, rotation, boussole
+$('zoomIn').onclick=()=>map.zoomIn();
+$('zoomOut').onclick=()=>map.zoomOut();
+const needle=document.querySelector('#compass .needle');
+function syncCompass(){ const b=map.getBearing?map.getBearing():0; needle.style.transform='rotate('+(-b)+'deg)'; }
+map.on('rotate',syncCompass);
+$('compass').onclick=()=>{
+  if(!map.setBearing) return;
+  let from=map.getBearing(); if(from>180) from-=360; if(Math.abs(from)<0.5){ map.setBearing(0); return; }
+  if(reduceMotion){ map.setBearing(0); return; }
+  const t0=performance.now(), dur=380;
+  (function step(t){ const k=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-k,3); map.setBearing(from*(1-e)); if(k<1) requestAnimationFrame(step); })(t0);
+};
 
 let start=store.get('start',null);   // [lat,lon]
 let startMarker=null, meMarker=null, routeLayer=null, kmLayer=null, cursor=null;
@@ -210,7 +310,8 @@ function setStart(ll,fly){
   if(fly) map.setView(start,Math.max(map.getZoom(),14));
 }
 if(start){ setStart(start); map.setView(start,13); }
-map.on('click',e=>{ if(busy) return; if(!$('result').classList.contains('hidden')) return; setStart([e.latlng.lat,e.latlng.lng]); hint('Départ placé ici. Fais glisser le point vert pour l\'ajuster.'); });
+let menuClosedAt=0;
+map.on('click',e=>{ if(busy||performance.now()-menuClosedAt<400) return; if(!$('result').classList.contains('hidden')) return; setStart([e.latlng.lat,e.latlng.lng]); hint('Départ placé ici. Fais glisser le point vert pour l\'ajuster.'); });
 
 function hint(t,err){const h=$('hint');h.textContent=t;h.classList.toggle('err',!!err);}
 
@@ -259,10 +360,58 @@ $('dpPlus').onclick=()=>{cfg.dplus=clamp(cfg.dplus+50,0,3000);syncForm();};
 document.querySelectorAll('#profileSeg button').forEach(b=>b.onclick=()=>{cfg.profile=b.dataset.p;syncForm();});
 syncForm();
 
-const sheet=$('sheet');
-function toggleSheet(force){ sheet.classList.toggle('collapsed',force); }
-$('handle').onclick=()=>toggleSheet();
-$('handle').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleSheet();}};
+// ---------- Panneau : glisser pour le baisser ou le remonter ----------
+const sheet=$('sheet'), grab=$('grab');
+function toggleSheet(force){
+  const c=sheet.classList.toggle('collapsed',force);
+  $('handle').setAttribute('aria-expanded',!c); $('peek').setAttribute('aria-hidden',!c);
+  if(c) sheet.scrollTop=0;
+  updatePeek();
+}
+function updatePeek(){
+  const res=!$('result').classList.contains('hidden')&&results[current];
+  if(res){ const r=results[current]; $('peekTitle').textContent='Option '+(current+1)+' · '+fmtKm(r.length/1000)+' km';
+    $('peekSub').textContent=Math.round(r.ascend)+' m D+ · glisse vers le haut pour les détails'; }
+  else { $('peekTitle').textContent='Boucle de '+fmtKm(cfg.dist)+' km'+(cfg.useD?' · '+cfg.dplus+' m D+':'');
+    $('peekSub').textContent='Glisse vers le haut pour les réglages'; }
+}
+(function(){
+  let y0=0,t0=0,base=0,maxT=0,moved=false,id=null,lastY=0,lastT=0,vel=0;
+  const peekPx=()=>sheet.getBoundingClientRect().height-(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--peek'))||76);
+  grab.addEventListener('pointerdown',e=>{
+    id=e.pointerId; grab.setPointerCapture(id); y0=lastY=e.clientY; t0=lastT=performance.now(); moved=false; vel=0;
+    maxT=Math.max(0,peekPx()); base=sheet.classList.contains('collapsed')?maxT:0;
+  });
+  grab.addEventListener('pointermove',e=>{
+    if(e.pointerId!==id) return;
+    const dy=e.clientY-y0; if(!moved&&Math.abs(dy)<6) return;
+    if(!moved){ moved=true; sheet.classList.add('dragging'); }
+    const now=performance.now(); vel=(e.clientY-lastY)/Math.max(1,now-lastT); lastY=e.clientY; lastT=now;
+    let t=base+dy; if(t<0) t=t/3; if(t>maxT) t=maxT+(t-maxT)/3;   // résistance au-delà des butées
+    sheet.style.transform='translateY('+t+'px)';
+  });
+  const end=e=>{
+    if(e.pointerId!==id) return; id=null;
+    if(!moved){ toggleSheet(); refocusRoute(); return; }
+    const t=base+(e.clientY-y0);
+    const collapse=Math.abs(vel)>0.45?vel>0:t>maxT/2;
+    sheet.classList.remove('dragging'); sheet.style.transform='';
+    toggleSheet(collapse); refocusRoute();
+  };
+  grab.addEventListener('pointerup',end); grab.addEventListener('pointercancel',end);
+})();
+$('handle').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleSheet();refocusRoute();}};
+// Quand on baisse le panneau à la main, la boucle se recadre dans l'espace libéré
+function refocusRoute(){
+  if($('result').classList.contains('hidden')||!routeLayer||!sheet.classList.contains('collapsed')) return;
+  const r=results[current]; if(!r) return;
+  map.stop(); autoMove=true;
+  map.fitBounds(L.latLngBounds(r.coords.map(c=>[c[0],c[1]])),{paddingTopLeft:[24,40],paddingBottomRight:[72,110],animate:!reduceMotion});
+}
+// En résultat, explorer la carte baisse le panneau tout seul
+let autoMove=false;
+map.on('moveend',()=>{ autoMove=false; });
+map.on('dragstart zoomstart',()=>{ if(autoMove) return; if(!$('result').classList.contains('hidden')&&!sheet.classList.contains('collapsed')&&!busy) toggleSheet(true); });
 
 // ---------- Géométrie ----------
 const RAD=Math.PI/180;
@@ -498,8 +647,9 @@ function drawRoute(r){
     L.marker(p,{interactive:false,keyboard:false,icon:L.divIcon({className:'',html:'<div class="km-label">'+(m/1000)+'</div>',iconSize:[24,18],iconAnchor:[12,9]})}).addTo(kmLayer);
   }
   if(startMarker) startMarker.setZIndexOffset(1000);
-  const sh=sheet.getBoundingClientRect().height;
-  map.fitBounds(L.latLngBounds(ll),{paddingTopLeft:[24,24],paddingBottomRight:[24,Math.min(sh,innerHeight*0.6)+16]});
+  const sh=sheet.classList.contains('collapsed')?90:sheet.getBoundingClientRect().height;
+  autoMove=true;
+  map.fitBounds(L.latLngBounds(ll),{paddingTopLeft:[24,24],paddingBottomRight:[72,Math.min(sh,innerHeight*0.6)+16]});
 
   $('sDist').textContent=fmtKm(r.length/1000);
   $('sUp').textContent=Math.round(r.ascend);
