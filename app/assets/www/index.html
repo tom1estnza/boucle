@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F172A">
+<title>Boucle</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<style>
+:root{
+  --bg:#0F172A; --card:#192134; --card2:#222C42; --fg:#F8FAFC; --muted:#94A3B8;
+  --border:rgba(255,255,255,.09); --primary:#EA580C; --primary-2:#F97316; --on-primary:#0B0F19;
+  --accent:#10B981; --danger:#F87171; --radius:16px;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Inter",sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:16px;overflow:hidden}
+button{font:inherit;color:inherit}
+#map{position:absolute;inset:0;background:#dfe6e9}
+.leaflet-control-attribution{font-size:10px;max-width:70vw}
+.fab-col{position:absolute;right:12px;top:calc(12px + env(safe-area-inset-top));display:flex;flex-direction:column;gap:10px;z-index:500}
+.fab{width:48px;height:48px;border-radius:14px;border:1px solid var(--border);background:var(--bg);display:grid;place-items:center;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer}
+.fab:active{transform:scale(.95)}
+.fab svg{width:22px;height:22px;stroke:var(--fg);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.fab.busy svg{animation:spin 1.2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;background:var(--bg);border-radius:22px 22px 0 0;
+  box-shadow:0 -10px 30px rgba(0,0,0,.4);padding:6px 16px calc(16px + env(safe-area-inset-bottom));max-height:78vh;overflow-y:auto;
+  transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.sheet.collapsed{transform:translateY(calc(100% - 64px))}
+.handle{display:flex;justify-content:center;align-items:center;height:28px;cursor:pointer}
+.handle span{width:44px;height:5px;border-radius:3px;background:#475569}
+.hint{color:var(--muted);font-size:13px;margin:0 0 10px;min-height:18px}
+.hint.err{color:var(--danger)}
+.row{margin:14px 0}
+.lbl{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.lbl b{font-size:14px;font-weight:600;color:var(--muted);letter-spacing:.02em}
+.val{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.val small{font-size:15px;font-weight:600;color:var(--muted);margin-left:3px}
+.stepper{display:flex;align-items:center;gap:10px}
+.step{width:44px;height:44px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:22px;font-weight:600;cursor:pointer;flex:none}
+.step:active{background:var(--card2)}
+input[type=range]{flex:1;width:100%;accent-color:var(--primary);height:32px}
+.seg{display:flex;background:var(--card);border-radius:12px;padding:4px;gap:4px}
+.seg button{flex:1;border:0;background:transparent;border-radius:9px;min-height:40px;font-weight:600;color:var(--muted);cursor:pointer;font-size:15px}
+.seg button[aria-pressed=true]{background:var(--card2);color:var(--fg);box-shadow:inset 0 0 0 1px var(--border)}
+.switch{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;cursor:pointer}
+.switch input{position:absolute;opacity:0;pointer-events:none}
+.track{width:48px;height:28px;border-radius:14px;background:#334155;position:relative;flex:none;transition:background .2s}
+.track::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .2s}
+.switch input:checked + .track{background:var(--primary)}
+.switch input:checked + .track::after{transform:translateX(20px)}
+.switch input:focus-visible + .track{outline:2px solid var(--primary-2);outline-offset:2px}
+.cta{width:100%;min-height:54px;border:0;border-radius:14px;background:var(--primary);color:var(--on-primary);font-size:17px;font-weight:700;cursor:pointer;margin-top:6px}
+.cta:active{background:var(--primary-2)}
+.cta[disabled]{opacity:.55}
+.ghost{min-height:46px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-weight:600;cursor:pointer;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.ghost svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ghost:active{background:var(--card2)}
+:focus-visible{outline:2px solid var(--primary-2);outline-offset:2px}
+.progress{height:6px;background:var(--card);border-radius:3px;overflow:hidden;margin-top:12px;display:none}
+.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--primary),var(--primary-2));transition:width .3s}
+.busy .progress{display:block}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:4px 0 12px}
+.stat{background:var(--card);border-radius:12px;padding:10px 8px;text-align:center}
+.stat .n{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stat .t{font-size:12px;color:var(--muted);margin-top:2px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px}
+.chip{flex:none;border:1px solid var(--border);background:var(--card);border-radius:12px;padding:8px 12px;min-height:44px;cursor:pointer;text-align:left}
+.chip b{display:block;font-size:14px}
+.chip span{font-size:12px;color:var(--muted)}
+.chip[aria-pressed=true]{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary)}
+.profile{position:relative;background:var(--card);border-radius:12px;height:130px;margin-bottom:12px;touch-action:none}
+.profile canvas{width:100%;height:100%;display:block}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.actions .wide{grid-column:1/-1}
+.quality{font-size:13px;color:var(--muted);margin:-4px 0 10px}
+.quality .ok{color:var(--accent)} .quality .warn{color:#FBBF24}
+.km-label{background:#fff;color:#0F172A;border:2px solid var(--primary);border-radius:10px;font:700 11px/16px var(--font);text-align:center;min-width:20px;padding:0 3px;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.start-pin{width:22px;height:22px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45)}
+.me-dot{width:16px;height:16px;border-radius:50%;background:#3B82F6;border:3px solid #fff;box-shadow:0 0 0 6px rgba(59,130,246,.25)}
+.cursor-dot{width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid var(--primary)}
+.hidden{display:none!important}
+.offline{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;z-index:900;background:var(--bg)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Carte"></div>
+
+<div class="fab-col">
+  <button class="fab" id="btnLocate" aria-label="Ma position">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+  </button>
+  <button class="fab" id="btnLayer" aria-label="Changer de fond de carte">
+    <svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 16 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+  </button>
+</div>
+
+<section class="sheet" id="sheet" aria-label="Réglages du parcours">
+  <div class="handle" id="handle" role="button" tabindex="0" aria-label="Réduire ou agrandir le panneau"><span></span></div>
+
+  <!-- Réglages -->
+  <div id="setup">
+    <p class="hint" id="hint" aria-live="polite">Recherche de ta position… Tu peux aussi toucher la carte pour choisir le départ.</p>
+
+    <div class="row">
+      <div class="lbl"><b>DISTANCE</b><span class="val"><span id="distVal">10</span><small>km</small></span></div>
+      <div class="stepper">
+        <button class="step" id="distMinus" aria-label="Moins un kilomètre">−</button>
+        <input type="range" id="dist" min="2" max="60" step="0.5" value="10" aria-label="Distance en kilomètres">
+        <button class="step" id="distPlus" aria-label="Plus un kilomètre">+</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <label class="switch">
+        <span><b style="font-size:15px">Viser un dénivelé positif</b><br><span style="color:var(--muted);font-size:13px">Sinon le relief n'est pas pris en compte</span></span>
+        <input type="checkbox" id="useDplus"><span class="track" aria-hidden="true"></span>
+      </label>
+      <div id="dplusRow" class="hidden" style="margin-top:10px">
+        <div class="lbl"><b>D+</b><span class="val"><span id="dplusVal">300</span><small>m</small></span></div>
+        <div class="stepper">
+          <button class="step" id="dpMinus" aria-label="Moins 50 mètres">−</button>
+          <input type="range" id="dplus" min="0" max="3000" step="25" value="300" aria-label="Dénivelé positif en mètres">
+          <button class="step" id="dpPlus" aria-label="Plus 50 mètres">+</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="lbl"><b>TERRAIN</b></div>
+      <div class="seg" id="profileSeg" role="group" aria-label="Type de chemins">
+        <button data-p="hiking-mountain" aria-pressed="true">Sentiers</button>
+        <button data-p="trekking" aria-pressed="false">Mixte</button>
+        <button data-p="shortest" aria-pressed="false">Tout</button>
+      </div>
+    </div>
+
+    <button class="cta" id="btnGo">Créer la boucle</button>
+    <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+  </div>
+
+  <!-- Résultat -->
+  <div id="result" class="hidden">
+    <div class="chips" id="chips" role="group" aria-label="Options de parcours"></div>
+    <div class="stats">
+      <div class="stat"><div class="n" id="sDist">–</div><div class="t">km</div></div>
+      <div class="stat"><div class="n" id="sUp">–</div><div class="t">D+ (m)</div></div>
+      <div class="stat"><div class="n" id="sMax">–</div><div class="t">alt. max</div></div>
+      <div class="stat"><div class="n" id="sEff">–</div><div class="t">km-effort</div></div>
+    </div>
+    <p class="quality" id="quality"></p>
+    <div class="profile" id="profile" aria-label="Profil altimétrique"><canvas id="prof"></canvas></div>
+    <div class="actions">
+      <button class="cta wide" id="btnGpx" style="margin-top:0">Exporter le GPX</button>
+      <button class="ghost" id="btnAgain">
+        <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Autres boucles</button>
+      <button class="ghost" id="btnEdit">
+        <svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Réglages</button>
+    </div>
+  </div>
+</section>
+
+<div class="offline hidden" id="offline"><div><h2>Pas de connexion</h2><p style="color:var(--muted)">Boucle a besoin d'internet pour charger la carte et tracer les parcours sur les chemins.</p><button class="cta" onclick="location.reload()">Réessayer</button></div></div>
+
+<script>
+(function(){
+'use strict';
+if(!window.L){ document.getElementById('offline').classList.remove('hidden'); return; }
+
+const $=id=>document.getElementById(id);
+const native=window.Android||null;
+const BROUTER='https://brouter.de/brouter';
+const ELEV='https://api.open-meteo.com/v1/elevation';
+
+// ---------- Réglages persistés ----------
+const store={get(k,d){try{const v=localStorage.getItem('boucle.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},
+             set(k,v){try{localStorage.setItem('boucle.'+k,JSON.stringify(v));}catch(e){}}};
+const cfg={dist:store.get('dist',10),useD:store.get('useD',false),dplus:store.get('dplus',300),profile:store.get('profile','hiking-mountain')};
+
+// ---------- Carte ----------
+const layers=[
+  L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc',attribution:'© OpenStreetMap, SRTM | © OpenTopoMap (CC-BY-SA)'}),
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}),
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'© Esri, Maxar'})
+];
+let layerIdx=store.get('layer',0)%layers.length;
+const map=L.map('map',{zoomControl:false,attributionControl:false}).setView([46.6,2.4],6);
+L.control.attribution({position:'topleft',prefix:'Leaflet'}).addTo(map);
+layers[layerIdx].addTo(map);
+$('btnLayer').onclick=()=>{map.removeLayer(layers[layerIdx]);layerIdx=(layerIdx+1)%layers.length;layers[layerIdx].addTo(map);store.set('layer',layerIdx);};
+
+let start=store.get('start',null);   // [lat,lon]
+let startMarker=null, meMarker=null, routeLayer=null, kmLayer=null, cursor=null;
+const startIcon=L.divIcon({className:'',html:'<div class="start-pin"></div>',iconSize:[22,22],iconAnchor:[11,11]});
+const meIcon=L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[16,16],iconAnchor:[8,8]});
+
+function setStart(ll,fly){
+  start=[+ll[0],+ll[1]]; store.set('start',start);
+  if(!startMarker){
+    startMarker=L.marker(start,{icon:startIcon,draggable:true,keyboard:false,zIndexOffset:1000}).addTo(map);
+    startMarker.on('dragend',e=>{const p=e.target.getLatLng();setStart([p.lat,p.lng]);hint('Départ déplacé.');});
+  } else startMarker.setLatLng(start);
+  if(fly) map.setView(start,Math.max(map.getZoom(),14));
+}
+if(start){ setStart(start); map.setView(start,13); }
+map.on('click',e=>{ if(busy) return; if(!$('result').classList.contains('hidden')) return; setStart([e.latlng.lat,e.latlng.lng]); hint('Départ placé ici. Fais glisser le point vert pour l\'ajuster.'); });
+
+function hint(t,err){const h=$('hint');h.textContent=t;h.classList.toggle('err',!!err);}
+
+// ---------- Position ----------
+let gotFix=false;
+window.__onLocation=function(lat,lon,acc,done){
+  $('btnLocate').classList.toggle('busy',!done);
+  if(!meMarker) meMarker=L.marker([lat,lon],{icon:meIcon,interactive:false}).addTo(map); else meMarker.setLatLng([lat,lon]);
+  if(!gotFix||locateAsked){ setStart([lat,lon],true); hint('Départ : ta position (précision '+Math.round(acc)+' m).'); }
+  gotFix=true; if(done) locateAsked=false;
+};
+window.__onLocationError=function(msg){
+  $('btnLocate').classList.remove('busy'); locateAsked=false;
+  if(start&&!gotFix) hint('Position indisponible : départ au dernier point utilisé. Touche la carte pour le changer.');
+  else hint(msg,true);
+};
+let locateAsked=false, watchId=null;
+function locate(){
+  locateAsked=true; $('btnLocate').classList.add('busy');
+  if(native&&native.requestLocation){ native.requestLocation(); return; }
+  if(!navigator.geolocation){ window.__onLocationError('Position indisponible. Touche la carte pour choisir le départ.'); return; }
+  if(watchId!=null) navigator.geolocation.clearWatch(watchId);
+  watchId=navigator.geolocation.watchPosition(p=>{const d=p.coords.accuracy<=25;window.__onLocation(p.coords.latitude,p.coords.longitude,p.coords.accuracy,d);if(d){navigator.geolocation.clearWatch(watchId);watchId=null;}},
+    e=>window.__onLocationError('Position refusée ou indisponible. Touche la carte pour choisir le départ.'),{enableHighAccuracy:true,timeout:20000,maximumAge:60000});
+  setTimeout(()=>{if(watchId!=null){navigator.geolocation.clearWatch(watchId);watchId=null;$('btnLocate').classList.remove('busy');}},30000);
+}
+$('btnLocate').onclick=locate;
+
+// ---------- Formulaire ----------
+function fmtKm(v){return (Math.round(v*10)/10).toString().replace('.',',');}
+function syncForm(){
+  $('dist').value=cfg.dist; $('distVal').textContent=fmtKm(cfg.dist);
+  $('useDplus').checked=cfg.useD; $('dplusRow').classList.toggle('hidden',!cfg.useD);
+  $('dplus').value=cfg.dplus; $('dplusVal').textContent=cfg.dplus;
+  document.querySelectorAll('#profileSeg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.p===cfg.profile));
+  store.set('dist',cfg.dist);store.set('useD',cfg.useD);store.set('dplus',cfg.dplus);store.set('profile',cfg.profile);
+}
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+$('dist').oninput=e=>{cfg.dist=+e.target.value;syncForm();};
+$('distMinus').onclick=()=>{cfg.dist=clamp(Math.round(cfg.dist)-1,2,60);syncForm();};
+$('distPlus').onclick=()=>{cfg.dist=clamp(Math.round(cfg.dist)+1,2,60);syncForm();};
+$('useDplus').onchange=e=>{cfg.useD=e.target.checked;syncForm();};
+$('dplus').oninput=e=>{cfg.dplus=+e.target.value;syncForm();};
+$('dpMinus').onclick=()=>{cfg.dplus=clamp(cfg.dplus-50,0,3000);syncForm();};
+$('dpPlus').onclick=()=>{cfg.dplus=clamp(cfg.dplus+50,0,3000);syncForm();};
+document.querySelectorAll('#profileSeg button').forEach(b=>b.onclick=()=>{cfg.profile=b.dataset.p;syncForm();});
+syncForm();
+
+const sheet=$('sheet');
+function toggleSheet(force){ sheet.classList.toggle('collapsed',force); }
+$('handle').onclick=()=>toggleSheet();
+$('handle').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleSheet();}};
+
+// ---------- Géométrie ----------
+const RAD=Math.PI/180;
+function hav(a,b){const dLat=(b[0]-a[0])*RAD,dLon=(b[1]-a[1])*RAD;const s=Math.sin(dLat/2)**2+Math.cos(a[0]*RAD)*Math.cos(b[0]*RAD)*Math.sin(dLon/2)**2;return 12742000*Math.asin(Math.sqrt(s));}
+function toLL(o,x,y){return [o[0]+y/111320, o[1]+x/(111320*Math.cos(o[0]*RAD))];}
+function ellPerim(a,b){return Math.PI*(3*(a+b)-Math.sqrt((3*a+b)*(a+3*b)));}
+
+// Une boucle candidate = une ellipse qui passe par le départ, orientée selon `brg`.
+function buildCandidate(o,brg,elong,n,sense,a){
+  const b=a/elong, u=[Math.sin(brg*RAD),Math.cos(brg*RAD)], v=[-u[1]*sense,u[0]*sense];
+  const C=[u[0]*a,u[1]*a], pts=[];
+  for(let k=1;k<=n;k++){
+    const t=Math.PI+k*2*Math.PI/(n+1);
+    pts.push(toLL(o, C[0]+a*Math.cos(t)*u[0]+b*Math.sin(t)*v[0], C[1]+a*Math.cos(t)*u[1]+b*Math.sin(t)*v[1]));
+  }
+  return {brg,elong,n,sense,a,perim:ellPerim(a,b),wps:pts};
+}
+
+// ---------- Réseau ----------
+async function fetchT(url,ms){
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(),ms);
+  try{ return await fetch(url,{signal:c.signal}); } finally{ clearTimeout(t); }
+}
+async function brouter(pts,profile){
+  const lonlats=pts.map(p=>p[1].toFixed(6)+','+p[0].toFixed(6)).join('|');
+  const url=BROUTER+'?lonlats='+lonlats+'&profile='+profile+'&alternativeidx=0&format=geojson';
+  for(let attempt=0;attempt<2;attempt++){
+    let r;
+    try{ r=await fetchT(url,45000); }catch(e){ if(attempt) throw new Error('réseau'); await sleep(1500); continue; }
+    if(r.status===429||r.status>=500){ if(attempt) throw new Error('serveur occupé'); await sleep(2000); continue; }
+    if(!r.ok){ throw new Error((await r.text()).slice(0,140)); }
+    const j=await r.json(), f=j.features&&j.features[0];
+    if(!f) throw new Error('aucun tracé');
+    const coords=f.geometry.coordinates.map(c=>[c[1],c[0],c[2]==null?null:c[2]]);
+    return {coords,length:+f.properties['track-length'],ascend:+f.properties['filtered ascend']};
+  }
+}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+async function elevationGrid(o,half,n){
+  const lats=[],lons=[],cosl=Math.cos(o[0]*RAD);
+  for(let i=0;i<n;i++)for(let j=0;j<n;j++){
+    lats.push(o[0]+((i/(n-1))*2-1)*half/111320);
+    lons.push(o[1]+((j/(n-1))*2-1)*half/(111320*cosl));
+  }
+  const elev=[];
+  for(let s=0;s<lats.length;s+=100){
+    const url=ELEV+'?latitude='+lats.slice(s,s+100).map(v=>v.toFixed(5)).join(',')+'&longitude='+lons.slice(s,s+100).map(v=>v.toFixed(5)).join(',');
+    const r=await fetchT(url,15000); if(!r.ok) throw new Error('relief');
+    const j=await r.json(); elev.push(...j.elevation);
+  }
+  const lat0=lats[0],lon0=lons[0],dLat=(lats[n*n-1]-lat0)/(n-1),dLon=(lons[n-1]-lon0)/(n-1);
+  return function(lat,lon){
+    const fi=clamp((lat-lat0)/dLat,0,n-1.0001), fj=clamp((lon-lon0)/dLon,0,n-1.0001);
+    const i=Math.floor(fi),j=Math.floor(fj),di=fi-i,dj=fj-j,g=(a,b)=>elev[a*n+b];
+    return g(i,j)*(1-di)*(1-dj)+g(i+1,j)*di*(1-dj)+g(i,j+1)*(1-di)*dj+g(i+1,j+1)*di*dj;
+  };
+}
+// Dénivelé positif estimé le long des segments droits d'une boucle candidate
+function estClimb(get,pts,step){
+  let climb=0,ref=null;
+  for(let s=0;s<pts.length-1;s++){
+    const a=pts[s],b=pts[s+1],len=hav(a,b),k=Math.max(1,Math.ceil(len/step));
+    for(let i=0;i<=k;i++){
+      const e=get(a[0]+(b[0]-a[0])*i/k,a[1]+(b[1]-a[1])*i/k);
+      if(ref==null){ref=e;continue;}
+      if(e-ref>5){climb+=e-ref;ref=e;} else if(ref-e>5){ref=e;}
+    }
+  }
+  return climb;
+}
+
+// Part du tracé empruntée deux fois (aller-retour), en suivant une grille ~20 m
+function overlapRatio(coords){
+  const seen=new Map(); let idx=0,dup=0; const k=1/0.0002, kc=k*Math.cos(coords[0][0]*RAD);
+  for(let s=0;s<coords.length-1;s++){
+    const a=coords[s],b=coords[s+1],n=Math.max(1,Math.ceil(hav(a,b)/15));
+    for(let i=0;i<n;i++){
+      const lat=a[0]+(b[0]-a[0])*i/n, lon=a[1]+(b[1]-a[1])*i/n;
+      const key=Math.round(lat*k)+':'+Math.round(lon*kc);
+      idx++; const p=seen.get(key);
+      if(p===undefined) seen.set(key,idx); else if(idx-p>20) dup++;
+    }
+  }
+  return idx?dup/idx:0;
+}
+
+function metrics(r,target){
+  const D=target.dist*1000;
+  const distErr=Math.abs(r.length-D)/D;
+  const climbErr=target.useD?Math.abs(r.ascend-target.dplus)/Math.max(target.dplus,150):0;
+  const ov=overlapRatio(r.coords);
+  let mx=-1e9,mn=1e9; r.coords.forEach(c=>{if(c[2]!=null){mx=Math.max(mx,c[2]);mn=Math.min(mn,c[2]);}});
+  return Object.assign(r,{distErr,climbErr,ov,altMax:mx>-1e9?mx:null,altMin:mn<1e9?mn:null,
+    score:5*distErr+(target.useD?1.6*climbErr:0)+2.2*ov});
+}
+
+async function pool(items,n,fn){
+  const out=new Array(items.length); let i=0;
+  async function worker(){ while(i<items.length){ const k=i++; try{ out[k]=await fn(items[k],k); }catch(e){ out[k]=null; } } }
+  await Promise.all(Array.from({length:Math.min(n,items.length)},worker));
+  return out;
+}
+const angDiff=(a,b)=>{const d=Math.abs(a-b)%360;return d>180?360-d:d;};
+const median=a=>{const s=[...a].sort((x,y)=>x-y);return s.length?s[s.length>>1]:NaN;};
+
+// ---------- Génération ----------
+let busy=false, results=[], current=0, lastTarget=null;
+function setProgress(p,msg){ $('bar').style.width=Math.round(p*100)+'%'; if(msg) hint(msg); }
+
+async function generate(){
+  if(busy) return;
+  if(!start){ hint('Choisis d\'abord un départ : bouton position ou touche la carte.',true); return; }
+  busy=true; document.body.classList.add('busy'); $('btnGo').disabled=true; $('btnAgain').disabled=true;
+  const target={dist:cfg.dist,useD:cfg.useD,dplus:cfg.dplus,profile:cfg.profile};
+  lastTarget=target; const o=start.slice(), D=target.dist*1000;
+  try{
+    // 1. Relief autour du départ (sert à orienter les boucles vers les bosses ou le plat)
+    let get=null; const half=Math.max(1500,0.45*D);
+    if(target.useD){
+      setProgress(.05,'Lecture du relief autour du départ…');
+      try{ get=await elevationGrid(o,half,14); }catch(e){ get=null; }
+    }
+    // 2. Boucles candidates : 12 directions × 2 formes, sens au hasard
+    let f=1.25; const off=Math.random()*30, cands=[];
+    for(let i=0;i<12;i++){
+      const brg=(off+i*30)%360;
+      for(const [elong,n] of [[1,4],[1.8,3]]){
+        const sense=Math.random()<.5?1:-1;
+        const a=D/(f*ellPerim(1,1/elong));
+        cands.push(buildCandidate(o,brg,elong,n,sense,a));
+      }
+    }
+    let kClimb=1.4;
+    if(get){
+      const step=half/14;
+      cands.forEach(c=>c.est=estClimb(get,[o,...c.wps,o],step));
+    }
+    const pre=c=>get?Math.abs(kClimb*c.est-target.dplus)/Math.max(target.dplus,150):Math.random()*.01;
+    function pick(pool,count,taken){
+      const sorted=pool.filter(c=>!c.tried).sort((x,y)=>pre(x)-pre(y)), out=[];
+      for(const c of sorted){ if(out.length>=count) break; if([...taken,...out].every(t=>angDiff(t.brg,c.brg)>=40)) out.push(c); }
+      for(const c of sorted){ if(out.length>=count) break; if(!out.includes(c)) out.push(c); }
+      out.forEach(c=>c.tried=true); return out;
+    }
+    // 3. Premier passage sur les vrais chemins (BRouter, données OpenStreetMap)
+    let batch=pick(cands,target.useD&&get?8:6,[]), done=0, total=batch.length;
+    const routeCand=async c=>{
+      const r=await brouter([o,...c.wps,o],target.profile);
+      done++; setProgress(.1+.5*done/Math.max(total,1),'Tracé sur les chemins existants ('+done+'/'+total+')…');
+      return metrics(Object.assign(r,{cand:c}),target);
+    };
+    setProgress(.1,'Tracé sur les chemins existants…');
+    let routed=(await pool(batch,3,routeCand)).filter(Boolean);
+    if(!routed.length) throw new Error('Aucun chemin trouvé autour de ce départ. Essaie un autre point ou le terrain « Tout ».');
+    // Calibrage : rapport entre distance réelle et périmètre théorique, D+ réel et estimé
+    f=median(routed.map(r=>r.length/r.cand.perim))||f;
+    if(get){ const ks=routed.filter(r=>r.cand.est>20).map(r=>r.ascend/r.cand.est); if(ks.length) kClimb=median(ks); }
+    // 4. Si le dénivelé est loin du compte, on essaie d'autres directions mieux choisies
+    if(target.useD && Math.min(...routed.map(r=>r.climbErr))>0.12){
+      cands.forEach(c=>{ if(!c.tried){ c.a=D/(f*ellPerim(1,1/c.elong)); Object.assign(c,buildCandidate(o,c.brg,c.elong,c.n,c.sense,c.a)); if(get) c.est=estClimb(get,[o,...c.wps,o],half/14);} });
+      const more=pick(cands,4,routed.map(r=>r.cand)); total+=more.length;
+      routed=routed.concat((await pool(more,3,routeCand)).filter(Boolean));
+    }
+    // 5. Ajustement fin de la distance sur les meilleures boucles
+    const coarse=r=>(target.useD?1.6*r.climbErr:0)+2.2*r.ov+0.6*r.distErr;
+    routed.sort((x,y)=>coarse(x)-coarse(y));
+    const finals=[], top=[];
+    const okScore=coarse(routed[0])+0.3;   // la variété ne doit pas coûter trop de précision
+    for(const r of routed){ if(top.length>=3) break; if(coarse(r)<=okScore && top.every(t=>angDiff(t.cand.brg,r.cand.brg)>=40)) top.push(r); }
+    for(const r of routed){ if(top.length>=3) break; if(!top.includes(r)) top.push(r); }
+    let step=0; const steps=top.length*3;
+    await pool(top,3,async r=>{
+      let best=r, cur=r;
+      for(let it=0;it<3 && best.distErr>0.02;it++){
+        const ratio=clamp(D/cur.length,0.6,1.6), c=cur.cand;
+        const nc=buildCandidate(o,c.brg,c.elong,c.n,c.sense,c.a*ratio);
+        try{
+          const nr=metrics(Object.assign(await brouter([o,...nc.wps,o],target.profile),{cand:nc}),target);
+          cur=nr; if(nr.score<best.score) best=nr;
+        }catch(e){ break; }
+        step++; setProgress(.65+.33*step/steps,'Ajustement de la distance…');
+      }
+      finals.push(best);
+    });
+    finals.sort((x,y)=>x.score-y.score);
+    results=finals; current=0;
+    setProgress(1); hint('');
+    showResults();
+  }catch(e){
+    hint(e.message&&e.message.length<160?e.message:'Le calcul a échoué. Vérifie ta connexion et réessaie.',true);
+  }finally{
+    busy=false; document.body.classList.remove('busy'); $('btnGo').disabled=false; $('btnAgain').disabled=false;
+  }
+}
+$('btnGo').onclick=generate;
+$('btnAgain').onclick=()=>{ $('result').classList.add('hidden'); $('setup').classList.remove('hidden'); clearRoute(); generate(); };
+$('btnEdit').onclick=()=>{ $('result').classList.add('hidden'); $('setup').classList.remove('hidden'); clearRoute(); hint('Modifie les réglages puis relance.'); };
+window.__onBack=function(){
+  if(!$('result').classList.contains('hidden')){ $('btnEdit').onclick(); return true; }
+  if(sheet.classList.contains('collapsed')){ toggleSheet(false); return true; }
+  return false;
+};
+
+// ---------- Affichage ----------
+function clearRoute(){ [routeLayer,kmLayer,cursor].forEach(l=>l&&map.removeLayer(l)); routeLayer=kmLayer=cursor=null; }
+function cumDist(coords){ const d=[0]; for(let i=1;i<coords.length;i++) d.push(d[i-1]+hav(coords[i-1],coords[i])); return d; }
+
+function showResults(){
+  $('setup').classList.add('hidden'); $('result').classList.remove('hidden'); toggleSheet(false);
+  const chips=$('chips'); chips.innerHTML='';
+  results.forEach((r,i)=>{
+    const b=document.createElement('button'); b.className='chip'; b.setAttribute('aria-pressed',i===current);
+    b.innerHTML='<b>Option '+(i+1)+'</b><span>'+fmtKm(r.length/1000)+' km, '+Math.round(r.ascend)+' m D+</span>';
+    b.onclick=()=>{current=i;showResults();}; chips.appendChild(b);
+  });
+  drawRoute(results[current]);
+}
+
+function drawRoute(r){
+  clearRoute();
+  const ll=r.coords.map(c=>[c[0],c[1]]);
+  r.cum=r.cum||cumDist(r.coords);
+  routeLayer=L.layerGroup([
+    L.polyline(ll,{color:'#fff',weight:8,opacity:.9,interactive:false}),
+    L.polyline(ll,{color:'#EA580C',weight:4.5,opacity:1,interactive:false})
+  ]).addTo(map);
+  kmLayer=L.layerGroup().addTo(map);
+  const every=r.length>30000?5000:(r.length>12000?2000:1000);
+  for(let m=every,i=0;m<r.length-every*0.4;m+=every){
+    while(i<r.cum.length-1&&r.cum[i+1]<m) i++;
+    const t=(m-r.cum[i])/((r.cum[i+1]-r.cum[i])||1), p=[ll[i][0]+(ll[i+1][0]-ll[i][0])*t, ll[i][1]+(ll[i+1][1]-ll[i][1])*t];
+    L.marker(p,{interactive:false,keyboard:false,icon:L.divIcon({className:'',html:'<div class="km-label">'+(m/1000)+'</div>',iconSize:[24,18],iconAnchor:[12,9]})}).addTo(kmLayer);
+  }
+  if(startMarker) startMarker.setZIndexOffset(1000);
+  const sh=sheet.getBoundingClientRect().height;
+  map.fitBounds(L.latLngBounds(ll),{paddingTopLeft:[24,24],paddingBottomRight:[24,Math.min(sh,innerHeight*0.6)+16]});
+
+  $('sDist').textContent=fmtKm(r.length/1000);
+  $('sUp').textContent=Math.round(r.ascend);
+  $('sMax').textContent=r.altMax==null?'–':Math.round(r.altMax);
+  $('sEff').textContent=fmtKm(r.length/1000+r.ascend/100);
+  const t=lastTarget, parts=[];
+  const dd=(r.length-t.dist*1000)/(t.dist*1000)*100;
+  parts.push('<span class="'+(Math.abs(dd)<=5?'ok':'warn')+'">Distance '+(dd>=0?'+':'')+Math.round(dd)+' %</span>');
+  if(t.useD){ const de=Math.round(r.ascend-t.dplus); parts.push('<span class="'+(r.climbErr<=.2?'ok':'warn')+'">D+ '+(de>=0?'+':'')+de+' m vs objectif</span>'); }
+  parts.push('<span class="'+(r.ov<=.1?'ok':'warn')+'">'+Math.round(r.ov*100)+' % en aller-retour</span>');
+  $('quality').innerHTML=parts.join(' · ');
+  drawProfile(r);
+}
+
+function drawProfile(r){
+  const cv=$('prof'), box=$('profile'), dpr=window.devicePixelRatio||1;
+  const W=box.clientWidth, H=box.clientHeight; cv.width=W*dpr; cv.height=H*dpr;
+  const g=cv.getContext('2d'); g.scale(dpr,dpr); g.clearRect(0,0,W,H);
+  const el=r.coords.map(c=>c[2]), cum=r.cum, tot=cum[cum.length-1]||1;
+  if(el.some(v=>v==null)){ g.fillStyle='#94A3B8'; g.font='13px system-ui'; g.fillText('Altitudes indisponibles',12,24); return; }
+  let mn=Math.min(...el), mx=Math.max(...el); if(mx-mn<40){const m=(mx+mn)/2;mn=m-20;mx=m+20;}
+  const pl=40,pr=10,pt=12,pb=22, x=d=>pl+(W-pl-pr)*d/tot, y=e=>pt+(H-pt-pb)*(1-(e-mn)/(mx-mn));
+  g.strokeStyle='rgba(255,255,255,.08)'; g.fillStyle='#94A3B8'; g.font='11px system-ui'; g.lineWidth=1;
+  [mn,(mn+mx)/2,mx].forEach(v=>{g.beginPath();g.moveTo(pl,y(v));g.lineTo(W-pr,y(v));g.stroke();g.fillText(Math.round(v),4,y(v)+4);});
+  const kmStep=tot>30000?5000:tot>12000?2000:1000;
+  for(let m=0;m<=tot;m+=kmStep) g.fillText(m/1000,x(m)-3,H-6);
+  const grad=g.createLinearGradient(0,pt,0,H-pb); grad.addColorStop(0,'rgba(234,88,12,.55)'); grad.addColorStop(1,'rgba(234,88,12,.05)');
+  g.beginPath(); g.moveTo(x(0),y(el[0])); for(let i=1;i<el.length;i++) g.lineTo(x(cum[i]),y(el[i]));
+  g.lineTo(x(tot),H-pb); g.lineTo(x(0),H-pb); g.closePath(); g.fillStyle=grad; g.fill();
+  g.beginPath(); g.moveTo(x(0),y(el[0])); for(let i=1;i<el.length;i++) g.lineTo(x(cum[i]),y(el[i]));
+  g.strokeStyle='#F97316'; g.lineWidth=2; g.stroke();
+  box._geom={pl,pr,W,tot,x,y};
+}
+// Toucher le profil = voir l'endroit sur la carte
+function profileTouch(ev){
+  const r=results[current], box=$('profile'), gm=box._geom; if(!r||!gm) return;
+  const p=ev.touches?ev.touches[0]:ev, rect=box.getBoundingClientRect();
+  const d=clamp((p.clientX-rect.left-gm.pl)/(gm.W-gm.pl-gm.pr),0,1)*gm.tot;
+  let i=0; while(i<r.cum.length-1&&r.cum[i]<d) i++;
+  const c=r.coords[i];
+  if(!cursor) cursor=L.marker([c[0],c[1]],{interactive:false,icon:L.divIcon({className:'',html:'<div class="cursor-dot"></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map);
+  else cursor.setLatLng([c[0],c[1]]);
+  drawProfile(r);
+  const g=$('prof').getContext('2d');
+  g.strokeStyle='#fff'; g.lineWidth=1; g.beginPath(); g.moveTo(gm.x(d),8); g.lineTo(gm.x(d),box.clientHeight-22); g.stroke();
+  g.fillStyle='#fff'; g.font='600 12px system-ui';
+  const label=fmtKm(d/1000)+' km · '+Math.round(c[2])+' m';
+  g.fillText(label,clamp(gm.x(d)+6,44,gm.W-g.measureText(label).width-6),12);
+}
+['touchstart','touchmove','mousemove'].forEach(t=>$('profile').addEventListener(t,e=>{profileTouch(e);},{passive:true}));
+window.addEventListener('resize',()=>{ if(results[current]&&!$('result').classList.contains('hidden')) drawProfile(results[current]); });
+
+// ---------- GPX ----------
+function toGpx(r,name){
+  const esc=s=>s.replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  let s='<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Boucle" xmlns="http://www.topografix.com/GPX/1/1">\n<metadata><name>'+esc(name)+'</name></metadata>\n<trk><name>'+esc(name)+'</name><type>running</type><trkseg>\n';
+  r.coords.forEach(c=>{ s+='<trkpt lat="'+c[0].toFixed(6)+'" lon="'+c[1].toFixed(6)+'">'+(c[2]!=null?'<ele>'+c[2].toFixed(1)+'</ele>':'')+'</trkpt>\n'; });
+  return s+'</trkseg></trk>\n</gpx>\n';
+}
+$('btnGpx').onclick=()=>{
+  const r=results[current]; if(!r) return;
+  const d=new Date(), stamp=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
+  const name='Boucle '+fmtKm(r.length/1000)+' km '+Math.round(r.ascend)+' m D+';
+  const file='boucle-'+Math.round(r.length/100)/10+'km-'+Math.round(r.ascend)+'mDplus-'+stamp+'.gpx';
+  const xml=toGpx(r,name);
+  if(native&&native.saveGpx){ native.saveGpx(file,xml); return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([xml],{type:'application/gpx+xml'})); a.download=file; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+};
+
+// Démarrage : on demande la position tout de suite
+locate();
+})();
+</script>
+</body>
+</html>
